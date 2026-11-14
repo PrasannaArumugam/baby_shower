@@ -70,9 +70,12 @@ function backend(failWrite = false) {
   let locked = false;
   const sheet = {
     getLastRow: () => rows.length,
-    getRange: (row) => row === 1
+    getRange: (row, column, count, width) => row === 1
       ? { getValues: () => [rows[0]] }
-      : { createTextFinder: (id) => ({ matchEntireCell: () => ({ findNext: () => rows.some((r) => r[6] === id) || null }) }) },
+      : {
+        getValues: () => rows.slice(row - 1, row - 1 + count).map((r) => r.slice(column - 1, column - 1 + width)),
+        createTextFinder: (id) => ({ matchEntireCell: () => ({ findNext: () => rows.some((r) => r[6] === id) || null }) }),
+      },
     appendRow: (values) => { if (failWrite) throw new Error("Write failed"); rows.push(values); },
   };
   const context = vm.createContext({
@@ -110,4 +113,16 @@ test("backend rejects invalid or automated responses and explicitly reports stor
   assert.equal(failed.post(response).ok, false);
   assert.equal(failed.errors.length, 1);
   assert.equal(failed.locked(), false);
+});
+
+test("RSVP results include all saved selections, including declines, without exposing guest details or counting retries twice", () => {
+  const app = backend();
+  assert.deepEqual(app.post(response).stats, { boy: 0, girl: 1 });
+  const declined = { ...response, attendance: "no", gender: "boy", requestId: "8d0f9f8c-f5b0-4b89-9d62-2da6af451150" };
+  const result = app.post(declined);
+  assert.deepEqual(result, { ok: true, requestId: declined.requestId, stats: { boy: 1, girl: 1 } });
+  assert.deepEqual(app.post(declined).stats, { boy: 1, girl: 1 });
+  assert.equal(app.rows.length, 3);
+  app.rows[1][3] = "boy";
+  assert.deepEqual(app.post(declined).stats, { boy: 2, girl: 0 });
 });

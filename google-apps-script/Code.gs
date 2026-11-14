@@ -75,7 +75,12 @@ function doPost(event) {
       ]);
       SpreadsheetApp.flush();
     }
-    return json_({ ok: true, requestId: data.requestId });
+    const selections = sheet.getRange(2, 4, sheet.getLastRow() - 1, 1).getValues();
+    const stats = { boy: 0, girl: 0 };
+    selections.forEach(function (row) {
+      if (row[0] === "boy" || row[0] === "girl") stats[row[0]] += 1;
+    });
+    return json_({ ok: true, requestId: data.requestId, stats: stats });
   } catch (error) {
     console.error("RSVP save failed: " + error.message);
     return json_({ ok: false, error: "Unable to save response. Please retry or contact the hosts." });

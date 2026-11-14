@@ -23,6 +23,8 @@ if (Date.now() < Date.parse(config.eventDate)) countdownInterval = setInterval(u
 const form = document.getElementById("rsvp-form");
 const status = document.getElementById("form-status");
 const submitButton = form.querySelector('button[type="submit"]');
+const resultsDialog = document.getElementById("results-dialog");
+resultsDialog.addEventListener("close", () => submitButton.focus({ preventScroll: true }));
 let pendingSubmission;
 let submitting = false;
 
@@ -30,6 +32,29 @@ function showStatus(key, state) {
   currentStatus = { key, state };
   status.textContent = translations[language][key];
   status.dataset.state = state;
+}
+
+function showResults(stats) {
+  const valid = stats && Number.isSafeInteger(stats.boy) && stats.boy >= 0
+    && Number.isSafeInteger(stats.girl) && stats.girl >= 0
+    && Number.isSafeInteger(stats.boy + stats.girl) && stats.boy + stats.girl > 0;
+  document.getElementById("results-values").hidden = !valid;
+  document.getElementById("results-error").hidden = Boolean(valid);
+  if (valid) {
+    const total = stats.boy + stats.girl;
+    const boy = Math.round(stats.boy / total * 1000) / 10;
+    const percentages = { boy, girl: Math.round((100 - boy) * 10) / 10 };
+    resultsDialog.style.setProperty("--boy-share", `${boy}%`);
+    const percentFormat = new Intl.NumberFormat(language, { style: "percent", maximumFractionDigits: 1 });
+    for (const category of ["boy", "girl"]) {
+      document.getElementById(`${category}-percentage`).textContent = percentFormat.format(percentages[category] / 100);
+      document.getElementById(`${category}-result`).value = percentages[category];
+    }
+    document.getElementById("results-total").textContent = new Intl.NumberFormat(language).format(total);
+  } else {
+    console.error("RSVP saved, but aggregate results are missing or invalid. Check the Apps Script deployment.");
+  }
+  resultsDialog.showModal();
 }
 
 function setLanguage(nextLanguage) {
@@ -58,10 +83,18 @@ function setLanguage(nextLanguage) {
   updateCountdown();
 }
 
+const languageDialog = document.getElementById("language-dialog");
 document.querySelectorAll("[data-language]").forEach((button) => {
-  button.addEventListener("click", () => setLanguage(button.dataset.language));
+  button.addEventListener("click", () => {
+    setLanguage(button.dataset.language);
+    if (languageDialog.open) {
+      languageDialog.close();
+      document.querySelector(`.language-switch [data-language="${language}"]`).focus({ preventScroll: true });
+    }
+  });
 });
 setLanguage(language);
+languageDialog.showModal();
 
 if (!isAppsScriptEndpoint(config.rsvpEndpoint)) {
   showStatus("notConnected", "info");
@@ -105,6 +138,7 @@ form.addEventListener("submit", async (event) => {
     showStatus(data.attendance === "yes" ? "savedYes" : "savedNo", "success");
     form.reset();
     pendingSubmission = undefined;
+    showResults(result.stats);
   } catch (error) {
     console.error("RSVP submission could not be confirmed:", error);
     showStatus("saveError", "error");
